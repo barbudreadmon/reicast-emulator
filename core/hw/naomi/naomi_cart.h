@@ -83,6 +83,7 @@ int naomi_cart_GetSystemType(const char* file);
 
 extern char naomi_game_id[];
 extern u8 *naomi_default_eeprom;
+extern u8 *naomi_bd_eeprom;
 
 extern Cartridge *CurrentCartridge;
 

@@ -49,6 +49,7 @@ extern char g_roms_dir[PATH_MAX];
 
 InputDescriptors *naomi_game_inputs;
 u8 *naomi_default_eeprom;
+u8 *naomi_bd_eeprom;
 
 static bool naomi_LoadBios(const char *filename, Archive *child_archive, Archive *parent_archive, int region)
 {
@@ -254,6 +255,11 @@ static bool naomi_cart_LoadZip(char *filename)
 	CurrentCartridge->SetKey(game->key);
 	naomi_game_inputs = game->inputs;
 
+	std::string basepath(game_dir_no_slash);
+	basepath += "/";
+
+	Archive *bios_archive = OpenArchive((basepath + game->bios).c_str());
+
 	for (int romid = 0; game->blobs[romid].filename != NULL; romid++)
 	{
 		u32 len = game->blobs[romid].length;
@@ -272,9 +278,11 @@ static bool naomi_cart_LoadZip(char *filename)
 				file = archive->OpenFile(game->blobs[romid].filename);
 			if (file == NULL && parent_archive != NULL)
 				file = parent_archive->OpenFile(game->blobs[romid].filename);
+			if (file == NULL && bios_archive != NULL)
+				file = bios_archive->OpenFile(game->blobs[romid].filename);
 			if (!file) {
 				printf("%s: Cannot open %s\n", filename, game->blobs[romid].filename);
-				if (game->blobs[romid].blob_type != Eeprom)
+				if (game->blobs[romid].blob_type != MainEeprom && game->blobs[romid].blob_type != NaomiBdEeprom)
 				   // Default eeprom file is optional
 				   goto error;
 				else
@@ -316,7 +324,7 @@ static bool naomi_cart_LoadZip(char *filename)
 				CurrentCartridge->SetKeyData(buf);
 				printf("Loaded %s: %x bytes cart key\n", game->blobs[romid].filename, read);
 			}
-			else if (game->blobs[romid].blob_type == Eeprom)
+			else if (game->blobs[romid].blob_type == MainEeprom)
 			{
 			    naomi_default_eeprom = (u8 *)malloc(game->blobs[romid].length);
 			    if (naomi_default_eeprom == NULL)
@@ -326,7 +334,19 @@ static bool naomi_cart_LoadZip(char *filename)
 			       goto error;
 			    }
 				u32 read = file->Read(naomi_default_eeprom, game->blobs[romid].length);
-				printf("Loaded %s: %x bytes default eeprom\n", game->blobs[romid].filename, read);
+				printf("Loaded %s: %x bytes main eeprom\n", game->blobs[romid].filename, read);
+			}
+			else if (game->blobs[romid].blob_type == NaomiBdEeprom)
+			{
+			    naomi_bd_eeprom = (u8 *)malloc(game->blobs[romid].length);
+			    if (naomi_bd_eeprom == NULL)
+			    {
+			       printf("malloc failed\n");
+					delete file;
+			       goto error;
+			    }
+				u32 read = file->Read(naomi_bd_eeprom, game->blobs[romid].length);
+				printf("Loaded %s: %x bytes naomibd eeprom\n", game->blobs[romid].filename, read);
 			}
 			else
 				die("Unknown blob type\n");
@@ -337,6 +357,8 @@ static bool naomi_cart_LoadZip(char *filename)
 		delete archive;
 	if (parent_archive != NULL)
 		delete parent_archive;
+	if (bios_archive != NULL)
+		delete bios_archive;
 
 	CurrentCartridge->Init();
 
